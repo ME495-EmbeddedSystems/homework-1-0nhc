@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='Zhengxiao Han',
     maintainer_email='hanzx@u.northwestern.edu',
-    description='This package is used to control turtles' movements',
+    description="This package is used to control turtles' movements",
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={

@@ -13,13 +13,14 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='zhengxiao-han',
-    maintainer_email='thefoxfoxfox@outlook.com',
-    description='TODO: Package description',
+    maintainer='Zhengxiao Han',
+    maintainer_email='hanzx@u.northwestern.edu',
+    description='This package is used to control turtles' movements',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'waypoint = turtle_control.waypoint:main',
         ],
     },
 )

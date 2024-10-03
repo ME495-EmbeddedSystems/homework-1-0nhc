@@ -4,7 +4,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rcl_interfaces.msg import SetParametersResult
 from std_srvs.srv import Empty
 from turtle_interfaces.srv import Waypoints
-from turtlesim.srv import TeleportAbsolute
+from turtlesim.srv import TeleportAbsolute, SetPen
 
 MOVING = 0
 STOPPED = 1
@@ -53,6 +53,13 @@ class WaypointNode(Node):
             self.get_logger().info("Waiting for turtlesim's service: "+self._robot_name+"/teleport_absolute")
         self._teleport_absolute_request = TeleportAbsolute.Request()
         
+        # Turtlesim set pen client
+        self._set_pen_callback_group = MutuallyExclusiveCallbackGroup()
+        self._set_pen_client = self.create_client(SetPen, self._robot_name+'/set_pen', callback_group=self._set_pen_callback_group)
+        while not self._set_pen_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info("Waiting for turtlesim's service: "+self._robot_name+"/set_pen")
+        self._set_pen_request = SetPen.Request()
+        
         # Initialize state
         self._state = STOPPED
         # Initialize waypoints
@@ -65,19 +72,76 @@ class WaypointNode(Node):
             # While moving the turtle should leave a visual trail behind to show where it has been
     
     
-    def _draw_an_X(self, x, y):
+    async def _draw_an_X(self, x, y):
+        # Set parameters for drawing the X
+        X_length = 0.15
+        self._set_pen_request.r = int(255)
+        self._set_pen_request.g = int(0)
+        self._set_pen_request.b = int(0)
+        self._set_pen_request.width = int(2)
+        
+        # Turn off set pen service
+        self._set_pen_request.off = True
+        await self._set_pen_client.call_async(self._set_pen_request)
+        
+        # Go to the center point of the X first
         self._teleport_absolute_request.x = x
         self._teleport_absolute_request.y = y
-        self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Turn on set pen service
+        self._set_pen_request.off = False
+        await self._set_pen_client.call_async(self._set_pen_request)
+        
+        # Upper-right point of the X
+        self._teleport_absolute_request.x = x + X_length
+        self._teleport_absolute_request.y = y + X_length
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Lower-left point of the X
+        self._teleport_absolute_request.x = x - X_length
+        self._teleport_absolute_request.y = y - X_length
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Center point of the X
+        self._teleport_absolute_request.x = x
+        self._teleport_absolute_request.y = y
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Upper-left point of the X
+        self._teleport_absolute_request.x = x - X_length
+        self._teleport_absolute_request.y = y + X_length
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Lower-right point of the X
+        self._teleport_absolute_request.x = x + X_length
+        self._teleport_absolute_request.y = y - X_length
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Turn off set pen service
+        self._set_pen_request.off = True
+        await self._set_pen_client.call_async(self._set_pen_request)
+            
+        # self.get_logger().info(str(self._teleport_absolute_request))
     
     
-    def _load_callback(self, request, response):
+    async def _load_callback(self, request, response):
         # Read waypoints from request
         for point in request.waypoints:
-            self._draw_an_X(point.x, point.y)
-            
+            # Draw an X
+            await self._draw_an_X(point.x, point.y)
+
         # Send reset turtlesim request
-        self._reset_turtlesim_client.call_async(self._reset_turtlesim_request)
+        # self._reset_turtlesim_client.call_async(self._reset_turtlesim_request)
+        
+        # Go back to zero position
+        self._teleport_absolute_request.x = 5.544445
+        self._teleport_absolute_request.y = 5.544445
+        await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+        
+        # Turn on set pen service
+        self._set_pen_request.off = False
+        await self._set_pen_client.call_async(self._set_pen_request)
             
         return response
     

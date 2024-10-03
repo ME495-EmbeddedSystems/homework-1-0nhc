@@ -31,16 +31,14 @@ class SetWaypointsNode(Node):
             point_msg.z = 0.0
             self._set_waypoints_request.waypoints.append(point_msg)
         self._set_waypoints_client.call(self._set_waypoints_request)
-            
+        
+        self.destroy_node()
         
 
 def main(args=None):
     rclpy.init(args=args)
-    set_waypoints_node = SetWaypointsNode()
-    rclpy.spin(set_waypoints_node)
-    set_waypoints_node.destroy_node()
+    SetWaypointsNode()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

@@ -4,6 +4,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rcl_interfaces.msg import SetParametersResult
 from std_srvs.srv import Empty
 from turtle_interfaces.srv import Waypoints
+from turtlesim.srv import TeleportAbsolute
 
 MOVING = 0
 STOPPED = 1
@@ -22,6 +23,10 @@ class WaypointNode(Node):
         # Declare robot name, default to turtle1
         self.declare_parameter('robot_name', 'turtle1')
         self._robot_name = self.get_parameter("robot_name").get_parameter_value().string_value
+        # Remove '/'
+        while(self._robot_name[0] == '/'):
+            self._robot_name = self._robot_name[1:]
+            self.get_logger().info(self._robot_name)
         
         # Enable dynamic reconfiguration for parameters
         self.add_on_set_parameters_callback(self._parameter_callback)
@@ -42,13 +47,16 @@ class WaypointNode(Node):
         self._reset_turtlesim_request = Empty.Request()
         
         # Teleport turtle absolute client
-        # self._reset_turtlesim_client = self.create_client(Empty, 'reset')
-        # while not self._reset_turtlesim_client.wait_for_service(timeout_sec=1.0):
-        #     self.get_logger().info("Waiting for turtlesim's service: /reset")
-        # self._reset_turtlesim_request = Empty.Request()
+        self._teleport_absolute_callback_group = MutuallyExclusiveCallbackGroup()
+        self._teleport_absolute_client = self.create_client(TeleportAbsolute, self._robot_name+'/teleport_absolute', callback_group=self._teleport_absolute_callback_group)
+        while not self._teleport_absolute_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info("Waiting for turtlesim's service: "+self._robot_name+"/teleport_absolute")
+        self._teleport_absolute_request = TeleportAbsolute.Request()
         
         # Initialize state
         self._state = STOPPED
+        # Initialize waypoints
+        self._waypoints = [[1.4, 1.6], [2.2, 9.4], [7.2, 6.1], [4.0, 2.6], [8.2, 1.5], [4.1, 5.3]]
         
 
     async def _timer_callback(self):
@@ -57,7 +65,17 @@ class WaypointNode(Node):
             # While moving the turtle should leave a visual trail behind to show where it has been
     
     
+    def _draw_an_X(self, x, y):
+        self._teleport_absolute_request.x = x
+        self._teleport_absolute_request.y = y
+        self._teleport_absolute_client.call_async(self._teleport_absolute_request)
+    
+    
     def _load_callback(self, request, response):
+        # Read waypoints from request
+        for point in request.waypoints:
+            self._draw_an_X(point.x, point.y)
+            
         # Send reset turtlesim request
         self._reset_turtlesim_client.call_async(self._reset_turtlesim_request)
             

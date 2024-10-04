@@ -5,10 +5,12 @@ from rcl_interfaces.msg import SetParametersResult
 from std_srvs.srv import Empty
 from turtle_interfaces.srv import Waypoints
 from turtlesim.srv import TeleportAbsolute, SetPen
+from turtlesim.msg import Pose
 
 MOVING = 0
 STOPPED = 1
-
+    
+    
 class WaypointNode(Node):
 
     def __init__(self):
@@ -60,10 +62,16 @@ class WaypointNode(Node):
             self.get_logger().info("Waiting for turtlesim's service: "+self._robot_name+"/set_pen")
         self._set_pen_request = SetPen.Request()
         
-        # Initialize state
+        # Setup subscriber for turtle's pose
+        self._turtle_pose_subscriber = self.create_subscription(Pose, self._robot_name+'/pose', self._turtle_pose_callback, 10)
+        self._turtle_pose_subscriber  # prevent unused variable warning
+        
+        # Initialize node state
         self._state = STOPPED
         # Initialize waypoints
         self._waypoints = [[1.4, 1.6], [2.2, 9.4], [7.2, 6.1], [4.0, 2.6], [8.2, 1.5], [4.1, 5.3]]
+        # Initialize turtle pose
+        self._turtle_pose = Pose()
         
 
     async def _timer_callback(self):
@@ -130,9 +138,6 @@ class WaypointNode(Node):
         for point in request.waypoints:
             # Draw an X
             await self._draw_an_X(point.x, point.y)
-
-        # Send reset turtlesim request
-        # self._reset_turtlesim_client.call_async(self._reset_turtlesim_request)
         
         # Go back to zero position
         self._teleport_absolute_request.x = 5.544445
@@ -142,6 +147,9 @@ class WaypointNode(Node):
         # Turn on set pen service
         self._set_pen_request.off = False
         await self._set_pen_client.call_async(self._set_pen_request)
+        
+        # Make sure the state is STOPPED
+        self._state = STOPPED
             
         return response
     
@@ -158,11 +166,17 @@ class WaypointNode(Node):
             
         return response
     
+    
+    def _turtle_pose_callback(self, msg):
+        self._turtle_pose = msg
+    
+    
     def _parameter_callback(self, params):
         for param in params:
             self.get_logger().info('PARAMETER NEW VALUE, '+str(param.name)+': '+str(param.value))
         
         return SetParametersResult(successful=True)
+
 
 def main(args=None):
     rclpy.init(args=args)

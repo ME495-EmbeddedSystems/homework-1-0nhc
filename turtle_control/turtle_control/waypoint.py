@@ -6,9 +6,83 @@ from std_srvs.srv import Empty
 from turtle_interfaces.srv import Waypoints
 from turtlesim.srv import TeleportAbsolute, SetPen
 from turtlesim.msg import Pose
+from geometry_msgs.msg import Twist
+
+import numpy as np
 
 MOVING = 0
 STOPPED = 1
+    
+
+class DWAPlanner:
+    def __init__(self) -> None:
+        # Robot's dynamic parameters
+        self._MIN_VEL = 0.0  # Maximum linear velocity [m/s]
+        self._MAX_VEL = 1.5  # Maximum linear velocity [m/s]
+        self._MIN_OMEGA = -1.5  # Maximum angular velocity [rad/s]
+        self._MAX_OMEGA = 1.5  # Maximum angular velocity [rad/s]
+
+        # Sampling parameters
+        self._DT = 0.05  # Time step for simulating trajectories
+        self._PREDICTION_TIME = 0.5  # Predict over the next 2 seconds
+        self._NUM_SAMPLES = 5
+
+        # Cost function weights
+        self._ALPHA = 1.0  # Weight for goal progress
+        self._GAMMA = 1.0  # Weight for velocity
+        
+    
+    
+    def dwa_control(self, current_state, goal):
+        x = current_state[0]
+        y = current_state[1]
+        theta = current_state[2]
+        xg = goal[0]
+        yg = goal[1]
+        
+        best_v, best_w = 0, 0
+        best_cost = float('inf')
+        
+        # Define the dynamic window based on current state and constraints
+        vel_samples = np.linspace(self._MIN_VEL, self._MAX_VEL, self._NUM_SAMPLES)
+        omega_samples = np.linspace(self._MIN_OMEGA, self._MAX_OMEGA, self._NUM_SAMPLES)
+
+        # Loop through all velocity samples
+        for v in vel_samples:
+            for w in omega_samples:
+                # Predict the future trajectory
+                predicted_x, predicted_y, predicted_theta = self._predict_trajectory_ending(x, y, theta, v, w)
+
+                # Calculate costs for this trajectory
+                cost_goal = self._goal_cost(predicted_x, predicted_y, xg, yg)
+                cost_velocity = self._velocity_cost(v)
+
+                total_cost = self._ALPHA * cost_goal + self._GAMMA * cost_velocity
+
+                if total_cost < best_cost:
+                    best_cost = total_cost
+                    best_v, best_w = v, w
+
+        return [best_v, best_w]
+    
+    
+    def _predict_trajectory_ending(self, x, y, theta, v, w):
+        pred_x, pred_y, pred_theta = x, y, theta
+        for _ in range(int(self._PREDICTION_TIME / self._DT)):
+            pred_x += v * np.cos(pred_theta) * self._DT
+            pred_y += v * np.sin(pred_theta) * self._DT
+            pred_theta += w * self._DT
+        return pred_x, pred_y, pred_theta
+    
+    
+    def _goal_cost(self, px, py, xg, yg):
+        # We want the smallest Euclidean distance
+        return np.sqrt((px - xg) ** 2 + (py - yg) ** 2)
+    
+    
+    def _velocity_cost(self, v):
+        # We want the fastest speed
+        return 1.0 / (v + 1e-3)
     
     
 class WaypointNode(Node):
@@ -29,6 +103,9 @@ class WaypointNode(Node):
         while(self._robot_name[0] == '/'):
             self._robot_name = self._robot_name[1:]
             self.get_logger().info(self._robot_name)
+        # Declare goal tolerance parameter, default to 0.1
+        self.declare_parameter('tolerance', 0.1)
+        self._tolerance = self.get_parameter("tolerance").get_parameter_value().double_value
         
         # Enable dynamic reconfiguration for parameters
         self.add_on_set_parameters_callback(self._parameter_callback)
@@ -66,18 +143,51 @@ class WaypointNode(Node):
         self._turtle_pose_subscriber = self.create_subscription(Pose, self._robot_name+'/pose', self._turtle_pose_callback, 10)
         self._turtle_pose_subscriber  # prevent unused variable warning
         
+        # Setup publisher to control the turtle's movements
+        self._turtle_cmd_publisher = self.create_publisher(Twist, self._robot_name+'/cmd_vel', 10)
+        self._turtle_cmd = Twist()
+        
         # Initialize node state
         self._state = STOPPED
         # Initialize waypoints
-        self._waypoints = [[1.4, 1.6], [2.2, 9.4], [7.2, 6.1], [4.0, 2.6], [8.2, 1.5], [4.1, 5.3]]
+        self._waypoints = []
+        self._following_points = []
         # Initialize turtle pose
         self._turtle_pose = Pose()
         
+        # Initialize motion controller
+        self._dwa_controller = DWAPlanner()
+        
 
-    async def _timer_callback(self):
+    def _timer_callback(self):
         if(self._state == MOVING):
             self.get_logger().debug('Issuing Command!')
-            # While moving the turtle should leave a visual trail behind to show where it has been
+            # Make sure waypoints are loaded
+            if(len(self._waypoints) == 0):
+                self.get_logger().error('No waypoints loaded. Load them with the "load" service.')
+            else:
+                # Follow the waypoints
+                # Check if there are points to follow
+                if(len(self._following_points) != 0):
+                    # Check if turtle has reached the goal point
+                    goal_point = self._following_points[0]
+                    distance = np.sqrt((self._turtle_pose.x - goal_point[0])**2+(self._turtle_pose.y - goal_point[1])**2)
+                    if(distance < self._tolerance):
+                        self._following_points.pop(0)
+                    else:
+                        current_state = [self._turtle_pose.x, self._turtle_pose.y, self._turtle_pose.theta]
+                        self._turtle_cmd.linear.x, self._turtle_cmd.angular.z = self._dwa_controller.dwa_control(current_state, goal_point)
+                        self._turtle_cmd_publisher.publish(self._turtle_cmd)
+                        # self.get_logger().info("best v: "+str(self._turtle_cmd.linear.x)+", best w: "+str(self._turtle_cmd.angular.z))
+                else:
+                    self._turtle_cmd.linear.x = float(0)
+                    self._turtle_cmd.angular.z = float(0)
+                    self._turtle_cmd_publisher.publish(self._turtle_cmd)
+                    self.get_logger().info('Turtle has already reached the end of waypoints.')
+                
+                
+        elif(self._state == STOPPED):
+            pass
     
     
     async def _draw_an_X(self, x, y):
@@ -134,10 +244,23 @@ class WaypointNode(Node):
     
     
     async def _load_callback(self, request, response):
+        # Initialize distance response
+        distance = 0.0
+        
         # Read waypoints from request
-        for point in request.waypoints:
+        for idx, point in enumerate(request.waypoints):
             # Draw an X
             await self._draw_an_X(point.x, point.y)
+            # Store the point
+            self._waypoints.append([point.x, point.y])
+            self._following_points.append([point.x, point.y])
+            # Calc the distance
+            if(idx != len(request.waypoints)-1):
+                d = np.sqrt((point.x - request.waypoints[idx+1].x)**2+(point.y - request.waypoints[idx+1].y)**2)
+                distance += d
+            
+        # Complete the following circle
+        self._following_points.append([0, 0])
         
         # Go back to zero position
         self._teleport_absolute_request.x = 5.544445
@@ -150,6 +273,9 @@ class WaypointNode(Node):
         
         # Make sure the state is STOPPED
         self._state = STOPPED
+        
+        # Wrap the response
+        response.distance = float(distance)
             
         return response
     

@@ -2,5 +2,6 @@
     <node name="waypoint_node" exec="waypoint" pkg="turtle_control" output="screen">
         <param name="frequency" value="100.0"/>
         <param name="robot_name" value="/turtle1"/>
+        <param name="tolerance" value="0.1"/>
     </node>
 </launch>

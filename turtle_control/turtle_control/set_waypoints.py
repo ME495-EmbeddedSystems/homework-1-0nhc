@@ -30,7 +30,7 @@ class SetWaypointsNode(Node):
             point_msg.y = point[1]
             point_msg.z = 0.0
             self._set_waypoints_request.waypoints.append(point_msg)
-        self._set_waypoints_client.call(self._set_waypoints_request)
+        response = self._set_waypoints_client.call(self._set_waypoints_request)
         
         self.destroy_node()
         

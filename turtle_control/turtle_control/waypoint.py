@@ -9,6 +9,7 @@ from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
 
 import numpy as np
+import copy
 
 MOVING = 0
 STOPPED = 1
@@ -18,14 +19,14 @@ class DWAPlanner:
     def __init__(self) -> None:
         # Robot's dynamic parameters
         self._MIN_VEL = 0.0  # Maximum linear velocity [m/s]
-        self._MAX_VEL = 1.5  # Maximum linear velocity [m/s]
-        self._MIN_OMEGA = -1.5  # Maximum angular velocity [rad/s]
-        self._MAX_OMEGA = 1.5  # Maximum angular velocity [rad/s]
+        self._MAX_VEL = 3.0  # Maximum linear velocity [m/s]
+        self._MIN_OMEGA = -7.0  # Maximum angular velocity [rad/s]
+        self._MAX_OMEGA = 7.0  # Maximum angular velocity [rad/s]
 
         # Sampling parameters
-        self._DT = 0.05  # Time step for simulating trajectories
-        self._PREDICTION_TIME = 0.5  # Predict over the next 2 seconds
-        self._NUM_SAMPLES = 5
+        self._DT = 0.01  # Time step for simulating trajectories
+        self._PREDICTION_TIME = 0.3  # Predict over the next 2 seconds
+        self._NUM_SAMPLES = 15
 
         # Cost function weights
         self._ALPHA = 1.0  # Weight for goal progress
@@ -180,14 +181,16 @@ class WaypointNode(Node):
                         self._turtle_cmd_publisher.publish(self._turtle_cmd)
                         # self.get_logger().info("best v: "+str(self._turtle_cmd.linear.x)+", best w: "+str(self._turtle_cmd.angular.z))
                 else:
-                    self._turtle_cmd.linear.x = float(0)
-                    self._turtle_cmd.angular.z = float(0)
-                    self._turtle_cmd_publisher.publish(self._turtle_cmd)
-                    self.get_logger().info('Turtle has already reached the end of waypoints.')
+                    # Reload the waypoints
+                    self._following_points = copy.deepcopy(self._waypoints)
+                    self.get_logger().info('Turtle reached the end of waypoints.')
                 
                 
         elif(self._state == STOPPED):
-            pass
+            # Stop the turtle
+            self._turtle_cmd.linear.x = float(0)
+            self._turtle_cmd.angular.z = float(0)
+            self._turtle_cmd_publisher.publish(self._turtle_cmd)
     
     
     async def _draw_an_X(self, x, y):
@@ -258,9 +261,6 @@ class WaypointNode(Node):
             if(idx != len(request.waypoints)-1):
                 d = np.sqrt((point.x - request.waypoints[idx+1].x)**2+(point.y - request.waypoints[idx+1].y)**2)
                 distance += d
-            
-        # Complete the following circle
-        self._following_points.append([0, 0])
         
         # Go back to zero position
         self._teleport_absolute_request.x = 5.544445
@@ -268,6 +268,10 @@ class WaypointNode(Node):
         await self._teleport_absolute_client.call_async(self._teleport_absolute_request)
         
         # Turn on set pen service
+        self._set_pen_request.r = int(0)
+        self._set_pen_request.g = int(255)
+        self._set_pen_request.b = int(0)
+        self._set_pen_request.width = int(3)
         self._set_pen_request.off = False
         await self._set_pen_client.call_async(self._set_pen_request)
         

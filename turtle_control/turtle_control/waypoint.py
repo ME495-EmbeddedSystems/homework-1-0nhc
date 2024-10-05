@@ -17,6 +17,7 @@ MOVING = 0
 STOPPED = 1
     
 
+############################### Begin_Citation [1] ###############################
 # For the turtle's motion control
 class DWAPlanner:
     def __init__(self) -> None:
@@ -86,7 +87,8 @@ class DWAPlanner:
     def _velocity_cost(self, v):
         # We want the fastest speed
         return 1.0 / (v + 1e-3)
-    
+############################### End_Citation [1]  ###############################
+
 
 # For computing the turtle's odometry
 class DifferentialOdometry:

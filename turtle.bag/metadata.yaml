@@ -32,9 +32,9 @@ rosbag2_bagfile_information:
   compression_format: ""
   compression_mode: ""
   relative_file_paths:
-    - turtle.mcap
+    - turtle.bag.mcap
   files:
-    - path: turtle.mcap
+    - path: turtle.bag.mcap
       starting_time:
         nanoseconds_since_epoch: 1728103041575674459
       duration:

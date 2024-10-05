@@ -135,7 +135,7 @@ If the nodes launched from the `launchfile` are not running, you will get incorr
     crazy_turtle_interfaces.srv.Switch_Response(x=5.0, y=4.0)
     ```
 3. The `switch` service performs the following actions (in sequence):
-    1. It `resets` the current turtle
+    1. It `kills` the current turtle
     2. It then respawns a new turtle at `[newx=y+angular_velocity, newy=x*linear_velocity]`
 4. What happens to the turtle's motion if you use `ros2 param set /mover velocity 10.0` to change `/mover velocity` to 10? `same`
 5. Use the Linux command `pkill mover` to kill the `/mover` node.

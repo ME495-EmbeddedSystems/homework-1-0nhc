@@ -4,6 +4,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rcl_interfaces.msg import SetParametersResult
 from std_srvs.srv import Empty
 from turtle_interfaces.srv import Waypoints
+from turtle_interfaces.msg import ErrorMetric
 from turtlesim.srv import TeleportAbsolute, SetPen
 from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
@@ -15,24 +16,24 @@ MOVING = 0
 STOPPED = 1
     
 
+# For the turtle's motion control
 class DWAPlanner:
     def __init__(self) -> None:
         # Robot's dynamic parameters
         self._MIN_VEL = 0.0  # Maximum linear velocity [m/s]
         self._MAX_VEL = 3.0  # Maximum linear velocity [m/s]
-        self._MIN_OMEGA = -7.0  # Maximum angular velocity [rad/s]
-        self._MAX_OMEGA = 7.0  # Maximum angular velocity [rad/s]
+        self._MIN_OMEGA = -10.0  # Maximum angular velocity [rad/s]
+        self._MAX_OMEGA = 10.0  # Maximum angular velocity [rad/s]
 
         # Sampling parameters
         self._DT = 0.01  # Time step for simulating trajectories
-        self._PREDICTION_TIME = 0.3  # Predict over the next 2 seconds
-        self._NUM_SAMPLES = 15
+        self._PREDICTION_TIME = 0.2  # Predict over the next 2 seconds
+        self._NUM_SAMPLES = 21
 
         # Cost function weights
         self._ALPHA = 1.0  # Weight for goal progress
         self._GAMMA = 1.0  # Weight for velocity
         
-    
     
     def dwa_control(self, current_state, goal):
         x = current_state[0]
@@ -42,7 +43,7 @@ class DWAPlanner:
         yg = goal[1]
         
         best_v, best_w = 0, 0
-        best_cost = float('inf')
+        minimum_cost = float('inf')
         
         # Define the dynamic window based on current state and constraints
         vel_samples = np.linspace(self._MIN_VEL, self._MAX_VEL, self._NUM_SAMPLES)
@@ -51,7 +52,7 @@ class DWAPlanner:
         # Loop through all velocity samples
         for v in vel_samples:
             for w in omega_samples:
-                # Predict the future trajectory
+                # Predict the future trajectoryff
                 predicted_x, predicted_y, predicted_theta = self._predict_trajectory_ending(x, y, theta, v, w)
 
                 # Calculate costs for this trajectory
@@ -60,8 +61,8 @@ class DWAPlanner:
 
                 total_cost = self._ALPHA * cost_goal + self._GAMMA * cost_velocity
 
-                if total_cost < best_cost:
-                    best_cost = total_cost
+                if total_cost < minimum_cost:
+                    minimum_cost = total_cost
                     best_v, best_w = v, w
 
         return [best_v, best_w]
@@ -84,6 +85,49 @@ class DWAPlanner:
     def _velocity_cost(self, v):
         # We want the fastest speed
         return 1.0 / (v + 1e-3)
+    
+
+# For computing the turtle's odometry
+class DifferentialOdometry:
+    def __init__(self, initial_x=0.0, initial_y=0.0, initial_theta=0.0, initial_time=0.0) -> None:
+        # Odometry states
+        self._x =  initial_x
+        self._y =  initial_y
+        self._theta =  initial_theta
+        self._time = initial_time
+        self._mode = STOPPED
+        self._travelled_distance = 0.0
+    
+    def update_odom(self, v, w, t):
+        if(self._mode == STOPPED):
+            # Start the odometry
+            self._mode = MOVING
+            self._time = t
+        elif(self._mode == MOVING):
+            # Begin computing
+            dt = t - self._time
+            dx = v*np.cos(self._theta)*dt
+            dy = v*np.sin(self._theta)*dt
+            dtheta = w**dt
+            ddistance = np.sqrt((dx)**2+(dy)**2)
+            
+            self._x += dx
+            self._y += dy
+            self._theta += dtheta
+            self._travelled_distance += ddistance
+            
+            self._time = t
+    
+    def clear_states(self):
+        self._x =  0.0
+        self._y =  0.0
+        self._theta =  0.0
+        self._time = 0.0
+        self._mode = STOPPED
+        self._travelled_distance = 0.0
+    
+    def get_travelled_distancce(self):
+        return self._travelled_distance
     
     
 class WaypointNode(Node):
@@ -148,17 +192,28 @@ class WaypointNode(Node):
         self._turtle_cmd_publisher = self.create_publisher(Twist, self._robot_name+'/cmd_vel', 10)
         self._turtle_cmd = Twist()
         
+        # Setup publisher to fro loop metrics
+        self._loop_metrics_publisher = self.create_publisher(ErrorMetric, '/loop_metrics', 10)
+        self._loop_metrics = ErrorMetric()
+        self._loop_metrics.complete_loops = int(0)
+        self._loop_metrics.actual_distance = float(0)
+        self._loop_metrics.error = float(0)
+        
         # Initialize node state
         self._state = STOPPED
         # Initialize waypoints
         self._waypoints = []
         self._following_points = []
+        self._waypoints_distance = 0.0
         # Initialize turtle pose
         self._turtle_pose = Pose()
+        # Flag for start recording odometry
+        self._following_the_first_goal = True
         
         # Initialize motion controller
         self._dwa_controller = DWAPlanner()
-        
+        # Initialize odometry
+        self._turtle_odometry = DifferentialOdometry()
 
     def _timer_callback(self):
         if(self._state == MOVING):
@@ -173,17 +228,46 @@ class WaypointNode(Node):
                     # Check if turtle has reached the goal point
                     goal_point = self._following_points[0]
                     distance = np.sqrt((self._turtle_pose.x - goal_point[0])**2+(self._turtle_pose.y - goal_point[1])**2)
+                    # Control the turtle
                     if(distance < self._tolerance):
+                        # Turtle has reached current goal, change the goal point
                         self._following_points.pop(0)
+                        self._following_the_first_goal = False
                     else:
+                        # Turtle hasn't reached the goal
+                        # Compute error metrics
+                        if (self._following_the_first_goal == False):
+                            current_v = self._turtle_pose.linear_velocity
+                            current_w = self._turtle_pose.angular_velocity
+                            current_t = self.get_clock().now().seconds_nanoseconds()[0] + self.get_clock().now().seconds_nanoseconds()[1]*1e-9
+                            self._turtle_odometry.update_odom(current_v, current_w, current_t)
+                        
+                        # Control the turtle's movements
                         current_state = [self._turtle_pose.x, self._turtle_pose.y, self._turtle_pose.theta]
                         self._turtle_cmd.linear.x, self._turtle_cmd.angular.z = self._dwa_controller.dwa_control(current_state, goal_point)
                         self._turtle_cmd_publisher.publish(self._turtle_cmd)
                         # self.get_logger().info("best v: "+str(self._turtle_cmd.linear.x)+", best w: "+str(self._turtle_cmd.angular.z))
                 else:
-                    # Reload the waypoints
+                    # One cycle is achieved
+                    
+                    # Publish loop metrics
+                    self._loop_metrics.complete_loops += int(1)
+                    self._loop_metrics.actual_distance = float(self._turtle_odometry.get_travelled_distancce())
+                    self._loop_metrics.error = float(self._loop_metrics.actual_distance - self._waypoints_distance)
+                    self._loop_metrics_publisher.publish(self._loop_metrics)
+                    
+                    # Reset the following waypoints
                     self._following_points = copy.deepcopy(self._waypoints)
                     self.get_logger().info('Turtle reached the end of waypoints.')
+                    
+                    # Reset the turtle's odometry
+                    self._turtle_odometry.clear_states()
+                    self._following_the_first_goal = True
+                    
+                    # Stop the turtle
+                    self._turtle_cmd.linear.x = float(0)
+                    self._turtle_cmd.angular.z = float(0)
+                    self._turtle_cmd_publisher.publish(self._turtle_cmd)
                 
                 
         elif(self._state == STOPPED):
@@ -246,11 +330,19 @@ class WaypointNode(Node):
         # self.get_logger().info(str(self._teleport_absolute_request))
     
     
-    async def _load_callback(self, request, response):
-        # Initialize distance response
-        distance = 0.0
+    async def _load_callback(self, request, response):        
+        # Reset error metrics
+        self._loop_metrics.complete_loops = int(0)
+        self._loop_metrics.actual_distance = float(0)
+        self._loop_metrics.error = float(0)
+        
+        # Reset the turtle's odometry
+        self._turtle_odometry.clear_states()
         
         # Read waypoints from request
+        self._waypoints = []
+        self._following_points = []
+        self._waypoints_distance = 0.0
         for idx, point in enumerate(request.waypoints):
             # Draw an X
             await self._draw_an_X(point.x, point.y)
@@ -260,7 +352,7 @@ class WaypointNode(Node):
             # Calc the distance
             if(idx != len(request.waypoints)-1):
                 d = np.sqrt((point.x - request.waypoints[idx+1].x)**2+(point.y - request.waypoints[idx+1].y)**2)
-                distance += d
+                self._waypoints_distance += d
         
         # Go back to zero position
         self._teleport_absolute_request.x = 5.544445
@@ -279,7 +371,7 @@ class WaypointNode(Node):
         self._state = STOPPED
         
         # Wrap the response
-        response.distance = float(distance)
+        response.distance = float(self._waypoints_distance)
             
         return response
     

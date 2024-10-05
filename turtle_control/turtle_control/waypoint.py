@@ -296,7 +296,7 @@ class WaypointNode(Node):
             r = int(127*np.sin((2*np.pi)*seed) + 128) # 0 - 255
             g = int(127*np.sin((2*np.pi)*seed - 4*np.pi/3) + 128) # 0 - 255
             b = int(127*np.sin((2*np.pi)*seed - 2*np.pi/3) + 128) # 0 - 255
-            self.get_logger().info("r: "+str(r)+", g: "+str(g)+",, b: "+str(b))
+            # self.get_logger().info("r: "+str(r)+", g: "+str(g)+",, b: "+str(b))
             self._set_pen_request.r = r
             self._set_pen_request.g = g
             self._set_pen_request.b = b

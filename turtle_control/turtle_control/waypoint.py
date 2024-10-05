@@ -151,14 +151,14 @@ class WaypointNode(Node):
         # Remove '/'
         while(self._robot_name[0] == '/'):
             self._robot_name = self._robot_name[1:]
-            self.get_logger().info(self._robot_name)
+            # self.get_logger().info(self._robot_name)
         # Declare goal tolerance parameter, default to 0.1
         self.declare_parameter('tolerance', 0.1)
         self._tolerance = self.get_parameter("tolerance").get_parameter_value().double_value
         # Declare goal tolerance parameter, default to 1.0 (0.0 - 1.0)
         self.declare_parameter('rainbow_increment_speed', 1.0)
         self._rainbow_increment_speed = self.get_parameter("rainbow_increment_speed").get_parameter_value().double_value*float(50)
-        self.get_logger().info(str(self._rainbow_increment_speed ))
+        # self.get_logger().info(str(self._rainbow_increment_speed ))
         
         # Enable dynamic reconfiguration for parameters
         self.add_on_set_parameters_callback(self._parameter_callback)

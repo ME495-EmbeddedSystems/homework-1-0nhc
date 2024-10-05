@@ -14,6 +14,6 @@
         <param name="rainbow_increment_speed" value="1.0"/>
     </node>
 
-    <!-- Launch set example waypoints -->
-    <node name="set_waypoints_node" exec="set_waypoints" pkg="turtle_control" output="screen"/>
+    <!-- DEVELOPING TOOL: Launch set example waypoints -->
+    <!-- <node name="set_waypoints_node" exec="set_waypoints" pkg="turtle_control" output="screen"/> -->
 </launch>

@@ -126,7 +126,7 @@ If the nodes launched from the `launchfile` are not running, you will get incorr
    ```
 
 ## Live Interaction
-1. Use the command `ros2 param get /mover velocity` to retrieve the value of the `/mover velocity` parameter, which is `double(4.5)`.
+1. Use the command `ros2 param get /mover velocity` to retrieve the value of the `/mover velocity` parameter, which is `4.5`.
 2. The ROS command to call the `/switch` service, and it's output is listed below:
     ```
     ros2 service call /switch crazy_turtle_interfaces/srv/Switch "{mixer: {x: 1.0, y: 2.0, theta: 0.0, angular_velocity: 3.0, linear_velocity: 4.0}}"

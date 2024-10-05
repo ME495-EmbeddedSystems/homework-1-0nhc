@@ -1,7 +1,12 @@
 <launch>
+    <node name="turtlesim_node" exec="turtlesim_node" pkg="turtlesim" output="screen">
+        <param from="$(find-pkg-share turtle_control)/config/colors.yaml"/>
+    </node>
     <node name="waypoint_node" exec="waypoint" pkg="turtle_control" output="screen">
         <param name="frequency" value="100.0"/>
         <param name="robot_name" value="/turtle1"/>
-        <param name="tolerance" value="0.1"/>
+        <param name="tolerance" value="0.05"/>
+        <param name="rainbow_frequency" value="10.0"/>
+        <param name="rainbow_increment_speed" value="1.0"/>
     </node>
 </launch>

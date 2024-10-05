@@ -11,6 +11,7 @@ from geometry_msgs.msg import Twist
 
 import numpy as np
 import copy
+import random 
 
 MOVING = 0
 STOPPED = 1
@@ -22,13 +23,13 @@ class DWAPlanner:
         # Robot's dynamic parameters
         self._MIN_VEL = 0.0  # Maximum linear velocity [m/s]
         self._MAX_VEL = 3.0  # Maximum linear velocity [m/s]
-        self._MIN_OMEGA = -10.0  # Maximum angular velocity [rad/s]
-        self._MAX_OMEGA = 10.0  # Maximum angular velocity [rad/s]
+        self._MIN_OMEGA = -8.0  # Maximum angular velocity [rad/s]
+        self._MAX_OMEGA = 8.0  # Maximum angular velocity [rad/s]
 
         # Sampling parameters
         self._DT = 0.01  # Time step for simulating trajectories
         self._PREDICTION_TIME = 0.2  # Predict over the next 2 seconds
-        self._NUM_SAMPLES = 21
+        self._NUM_SAMPLES = 11
 
         # Cost function weights
         self._ALPHA = 1.0  # Weight for goal progress
@@ -141,6 +142,9 @@ class WaypointNode(Node):
         # Declare timer frequency parameter, default to 90 Hz
         self.declare_parameter('frequency', 90.0)
         self._timer_frequency = self.get_parameter("frequency").get_parameter_value().double_value
+        # Declare rainbow frequency parameter, default to 10 Hz
+        self.declare_parameter('rainbow_frequency', 10.0)
+        self._rainbow_frequency = self.get_parameter("rainbow_frequency").get_parameter_value().double_value
         # Declare robot name, default to turtle1
         self.declare_parameter('robot_name', 'turtle1')
         self._robot_name = self.get_parameter("robot_name").get_parameter_value().string_value
@@ -151,12 +155,17 @@ class WaypointNode(Node):
         # Declare goal tolerance parameter, default to 0.1
         self.declare_parameter('tolerance', 0.1)
         self._tolerance = self.get_parameter("tolerance").get_parameter_value().double_value
+        # Declare goal tolerance parameter, default to 1.0 (0.0 - 1.0)
+        self.declare_parameter('rainbow_increment_speed', 1.0)
+        self._rainbow_increment_speed = self.get_parameter("rainbow_increment_speed").get_parameter_value().double_value*float(50)
+        self.get_logger().info(str(self._rainbow_increment_speed ))
         
         # Enable dynamic reconfiguration for parameters
         self.add_on_set_parameters_callback(self._parameter_callback)
         
-        # Setup ROS 2 timer
+        # Setup ROS 2 timers
         self._timer = self.create_timer(1.0/self._timer_frequency, self._timer_callback)
+        self._rainbow_timer = self.create_timer(1.0/self._rainbow_frequency, self._rainbow_timer_callback)
         
         # Setup ROS 2 Service
         self._toggle_servive = self.create_service(Empty, 'toggle', self._toggle_callback)
@@ -209,12 +218,15 @@ class WaypointNode(Node):
         self._turtle_pose = Pose()
         # Flag for start recording odometry
         self._following_the_first_goal = True
+        # For generating rainbow rgb
+        self._rainbow_seed = 0
         
         # Initialize motion controller
         self._dwa_controller = DWAPlanner()
         # Initialize odometry
         self._turtle_odometry = DifferentialOdometry()
-
+        
+        
     def _timer_callback(self):
         if(self._state == MOVING):
             self.get_logger().debug('Issuing Command!')
@@ -247,6 +259,7 @@ class WaypointNode(Node):
                         self._turtle_cmd.linear.x, self._turtle_cmd.angular.z = self._dwa_controller.dwa_control(current_state, goal_point)
                         self._turtle_cmd_publisher.publish(self._turtle_cmd)
                         # self.get_logger().info("best v: "+str(self._turtle_cmd.linear.x)+", best w: "+str(self._turtle_cmd.angular.z))
+                        
                 else:
                     # One cycle is achieved
                     
@@ -276,7 +289,26 @@ class WaypointNode(Node):
             self._turtle_cmd.angular.z = float(0)
             self._turtle_cmd_publisher.publish(self._turtle_cmd)
     
-    
+
+    async def _rainbow_timer_callback(self):
+        if(self._state == MOVING):
+            seed = float(self._rainbow_seed)/float(256*3)
+            r = int(127*np.sin((2*np.pi)*seed) + 128) # 0 - 255
+            g = int(127*np.sin((2*np.pi)*seed - 4*np.pi/3) + 128) # 0 - 255
+            b = int(127*np.sin((2*np.pi)*seed - 2*np.pi/3) + 128) # 0 - 255
+            self.get_logger().info("r: "+str(r)+", g: "+str(g)+",, b: "+str(b))
+            self._set_pen_request.r = r
+            self._set_pen_request.g = g
+            self._set_pen_request.b = b
+            self._set_pen_request.width = int(5)
+            self._set_pen_request.off = False
+            await self._set_pen_client.call_async(self._set_pen_request)
+            
+            # Update the rainbow seed
+            self._rainbow_seed += self._rainbow_increment_speed
+            self._rainbow_seed = self._rainbow_seed%(256*3)
+        
+        
     async def _draw_an_X(self, x, y):
         # Set parameters for drawing the X
         X_length = 0.15
@@ -363,7 +395,7 @@ class WaypointNode(Node):
         self._set_pen_request.r = int(0)
         self._set_pen_request.g = int(255)
         self._set_pen_request.b = int(0)
-        self._set_pen_request.width = int(3)
+        self._set_pen_request.width = int(5)
         self._set_pen_request.off = False
         await self._set_pen_client.call_async(self._set_pen_request)
         

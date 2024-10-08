@@ -15,14 +15,19 @@ SERVICES:
 
 CLIENTS:
   + reset (std_srvs.srv.Empty) - To reset the turtlesim simulator
-  + turtle1/teleport_absolute (turtlesim.srv.TeleportAbsolute) - To teleport the turtle to specific positions
+  + turtle1/teleport_absolute (turtlesim.srv.TeleportAbsolute) - To teleport the turtle to specific 
+    positions
   + turtle1/set_pen (turtlesim.srv.SetPen) - To control the pen in turtlesim
   
 PARAMETERS:
   + frequency (double) - Timer frequency to control the turtle's movements
   + tolerance (double) - The tolerance to check whether the turtle has arrived at the waypoint
-  + robot_name (string) - The robot name (default to "turtle1" in this project)
-  + rainbow_frequency (double) - Timer frequency to control the pen color in turtlesim
+  
+  Parameters below are related to other features I added for fun.
+  + robot_name (string) - The robot name (default to "turtle1" in this project). I do this because
+    I think in the future this project can be expanded to a multi-robot system.
+  + rainbow_frequency (double) - Timer frequency to control the pen color in turtlesim. I do this 
+    because I heard another guy from the last cohort did this, and I think it's interesting.
   + rainbow_increment_speed (double) - The speed of the rainbow
   
 """
@@ -42,24 +47,47 @@ import numpy as np
 import copy
 import random 
 
+# Predifined states
 MOVING = 0
 STOPPED = 1
     
 
 ############################### Begin_Citation [1] ###############################
-# For the turtle's motion control
 class DWAPlanner:
+    """DWA Planner for the turtle's motion control.
+
+    I use DWA planner to control the turtle to follow the waypoints.
+    This class is accomplished with the help of ChatGPT 4o. 
+    Related conversaiton link is in the citations.txt
+
+    Attributes:
+        _MIN_VEL: Minimum linear velocity [m/s]
+        _MAX_VEL: Maximum linear velocity [m/s]
+        _MIN_OMEGA: Minimum angular velocity [rad/s]
+        _MAX_OMEGA: Maximum angular velocity [rad/s]
+        _DT: Time step for simulating trajectories
+        _PREDICTION_TIME: Predict over the next _PREDICTION_TIME seconds
+        _NUM_SAMPLES: Number of velocity samples
+        _ALPHA: Weight for goal progress
+        _GAMMA: Weight for velocity
+        
+    """
     def __init__(self) -> None:
+        """Initializes the DWA Planner parameters
+        
+        Args:
+            None
+        """
         # Robot's dynamic parameters
-        self._MIN_VEL = 0.0  # Maximum linear velocity [m/s]
+        self._MIN_VEL = 0.0  # Minimum linear velocity [m/s]
         self._MAX_VEL = 3.0  # Maximum linear velocity [m/s]
-        self._MIN_OMEGA = -8.0  # Maximum angular velocity [rad/s]
+        self._MIN_OMEGA = -8.0  # Minimum angular velocity [rad/s]
         self._MAX_OMEGA = 8.0  # Maximum angular velocity [rad/s]
 
         # Sampling parameters
         self._DT = 0.01  # Time step for simulating trajectories
-        self._PREDICTION_TIME = 0.2  # Predict over the next 2 seconds
-        self._NUM_SAMPLES = 11
+        self._PREDICTION_TIME = 0.2  # Predict over the next _PREDICTION_TIME seconds
+        self._NUM_SAMPLES = 11 # Number of velocity samples
 
         # Cost function weights
         self._ALPHA = 1.0  # Weight for goal progress
@@ -67,12 +95,36 @@ class DWAPlanner:
         
     
     def dwa_control(self, current_state, goal):
+        """Give control input for the turtle's movements
+
+        Given goal point position and turtle's current states, this function
+        applies DWA to get the optimal velocity input for the turtle.
+
+        Args:
+            current_state: A list consisting of [x, y, theta], indicating the turtle's current state.
+            goal: A list consisting of [x, y], indicating the turtle's goal position.
+
+        Returns:
+            A list consisting of [best_v, best_w], indicating the controller's optimal input for the 
+            turtle. Here, best_v is the optimal linear velocity along the X axis, and best_w is the 
+            optimal angular velocity along the Z axis.
+            
+            Example:
+            [1.0, 0.5]
+            
+            Returned values are float.
+
+        Raises:
+            None
+        """
+        # Load args for programming convenience
         x = current_state[0]
         y = current_state[1]
         theta = current_state[2]
         xg = goal[0]
         yg = goal[1]
         
+        # Initialize controller variables
         best_v, best_w = 0, 0
         minimum_cost = float('inf')
         
@@ -83,15 +135,15 @@ class DWAPlanner:
         # Loop through all velocity samples
         for v in vel_samples:
             for w in omega_samples:
-                # Predict the future trajectoryff
+                # Predict the future trajectory
                 predicted_x, predicted_y, predicted_theta = self._predict_trajectory_ending(x, y, theta, v, w)
 
                 # Calculate costs for this trajectory
                 cost_goal = self._goal_cost(predicted_x, predicted_y, xg, yg)
                 cost_velocity = self._velocity_cost(v)
-
                 total_cost = self._ALPHA * cost_goal + self._GAMMA * cost_velocity
-
+                
+                # Get the optimal input
                 if total_cost < minimum_cost:
                     minimum_cost = total_cost
                     best_v, best_w = v, w
@@ -99,7 +151,31 @@ class DWAPlanner:
         return [best_v, best_w]
     
     
-    def _predict_trajectory_ending(self, x, y, theta, v, w):
+    def _predict_trajectory_ending(self, x, y, theta, v, w): 
+        """Form current states and sampled velocities, compute the turtle's final state after 
+        self._PREDICTION_TIME seconds.
+
+        Given turtle's current states and sampled velocities, this function computes the turtle's 
+        final state after self._PREDICTION_TIME seconds with a differential type mobile robot model.
+
+        Args:
+            x: The turtle's current x position
+            y: The turtle's current y position
+            theta: The turtle's current theta
+            v: The sampled linear velocity along the X axis
+            w: The sampled angular velocity along the Z axis
+
+        Returns:
+            The turtle's final state after self._PREDICTION_TIME seconds with sampled velocities.
+            
+            Example:
+            4.1, 5.3, 0.3
+            
+            Returned values are float.
+
+        Raises:
+            None
+        """
         pred_x, pred_y, pred_theta = x, y, theta
         for _ in range(int(self._PREDICTION_TIME / self._DT)):
             pred_x += v * np.cos(pred_theta) * self._DT
@@ -109,11 +185,55 @@ class DWAPlanner:
     
     
     def _goal_cost(self, px, py, xg, yg):
+        """Compute the goal cost of a trajectory derived form sampled velocities.
+
+        Given the end point position of a sample trajectory based on a sample velocities and the 
+        waypoint goal position, compute the goal cost of this trajectory based on Euclidean distance.
+        The smaller distance , the lower cost.
+
+        Args:
+            px: The end point position x of a sample trajectory based on a sample velocities
+            py: The end point position y of a sample trajectory based on a sample velocities
+            xg: The waypoint goal position x
+            yg: The waypoint goal position y
+
+        Returns:
+            The goal cost. We want the smallest Euclidean distance. 
+            The smaller distance , the lower cost.
+            
+            Example:
+            0.3
+            
+            Returned value is float.
+
+        Raises:
+            None
+        """
         # We want the smallest Euclidean distance
         return np.sqrt((px - xg) ** 2 + (py - yg) ** 2)
     
     
     def _velocity_cost(self, v):
+        """Compute the velocity cost of the sampled linear velocity.
+
+        Given a sampled linear velocity, this funciton computes the velocty cost based on it.
+        The smaller velocity , the higher cost.
+
+        Args:
+            v: the sampled linear velocity
+
+        Returns:
+            The velocity cost. We want the fastest speed.
+            The smaller velocity , the higher cost.
+            
+            Example:
+            0.3
+            
+            Returned value is float.
+
+        Raises:
+            None
+        """
         # We want the fastest speed
         return 1.0 / (v + 1e-3)
 ############################### End_Citation [1]  ###############################

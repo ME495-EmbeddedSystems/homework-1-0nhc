@@ -1,3 +1,17 @@
+"""The waypoint ROS 2 node for hopmework-1, along with a DWA planner class and an odometry class.
+
+This script contains the waypoint node. It communicates through several services and topics:
+
+PUBLISHERS:
+  + ${topic_name} (${message_type}) - The velocity of an erratic turtle path
+
+SERVICES:
+  + ${topic_name} (${service_type}) - Position of the new turtle
+
+PARAMETERS:
+  + frequency (double) - Timer frequency to control the turtle's movements
+"""
+
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup

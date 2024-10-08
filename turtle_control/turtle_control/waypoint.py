@@ -239,18 +239,53 @@ class DWAPlanner:
 ############################### End_Citation [1]  ###############################
 
 
-# For computing the turtle's odometry
 class DifferentialOdometry:
+    """Differential Odometry for the turtle's travelled distance.
+
+    This is a typical odometry for differential type mobile robots.
+
+    Attributes:
+        _x: The turtle's x position state [m]
+        _y: The turtle's y position state [m]
+        _theta: The turtle's theta orientation state [rad]
+        _time: Travelled time [s]
+        _mode: The waypoint node's mode [MOVING/STOPPED]
+        _travelled_distance: The distance the turtle has travelled [m]
+    """
     def __init__(self, initial_x=0.0, initial_y=0.0, initial_theta=0.0, initial_time=0.0) -> None:
+        """Initializes the Differential Odometry parameters
+        
+        Args:
+            initial_x: The initial x position state of the turtle.
+            initial_y: The initial y position state of the turtle.
+            initial_theta: The initial theta orientation state of the turtle.
+            initial_time: The initial travelled time.
+        """
         # Odometry states
-        self._x =  initial_x
-        self._y =  initial_y
-        self._theta =  initial_theta
-        self._time = initial_time
-        self._mode = STOPPED
-        self._travelled_distance = 0.0
+        self._x =  initial_x # The turtle's x position state [m]
+        self._y =  initial_y # The turtle's y position state [m]
+        self._theta =  initial_theta # The turtle's theta orientation state [rad]
+        self._time = initial_time # Travelled time [s]
+        self._mode = STOPPED # The waypoint node's mode [MOVING/STOPPED]
+        self._travelled_distance = 0.0 # The distance the turtle has travelled [m]
+    
     
     def update_odom(self, v, w, t):
+        """Update odometry with new states
+
+        Given turtle's velocity states and current time, update the odometry states.
+
+        Args:
+            v: Current linear velocity along the X axis
+            w: Current angular velocity along the Z axis
+            t: Current time in seconds
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
         if(self._mode == STOPPED):
             # Start the odometry
             self._mode = MOVING
@@ -270,7 +305,22 @@ class DifferentialOdometry:
             
             self._time = t
     
+    
     def clear_states(self):
+        """Clear odometry states
+
+        In this project, when a loop is completed, we have calculate the travelled distance again.
+        Thus, we need a function to clear the odometry's states.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
         self._x =  0.0
         self._y =  0.0
         self._theta =  0.0
@@ -278,7 +328,27 @@ class DifferentialOdometry:
         self._mode = STOPPED
         self._travelled_distance = 0.0
     
+    
     def get_travelled_distancce(self):
+        """Return travelled distance
+
+        When a loop circle is completed, we need to get the travelled distance. This funciton
+        returns the self._travelled_distance value.
+
+        Args:
+            None
+
+        Returns:
+            self._travelled_distance
+            
+            Example:
+            31.352
+            
+            Returned value is float.
+
+        Raises:
+            None
+        """
         return self._travelled_distance
     
     

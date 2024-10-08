@@ -166,7 +166,8 @@ class DWAPlanner:
             w: The sampled angular velocity along the Z axis
 
         Returns:
-            The turtle's final state after self._PREDICTION_TIME seconds with sampled velocities.
+            The turtle's final state consisting of [x, y, theta] after self._PREDICTION_TIME seconds 
+            with sampled velocities.
             
             Example:
             4.1, 5.3, 0.3
@@ -189,7 +190,7 @@ class DWAPlanner:
 
         Given the end point position of a sample trajectory based on a sample velocities and the 
         waypoint goal position, compute the goal cost of this trajectory based on Euclidean distance.
-        The smaller distance , the lower cost.
+        The smaller distance, the lower cost.
 
         Args:
             px: The end point position x of a sample trajectory based on a sample velocities
@@ -199,7 +200,7 @@ class DWAPlanner:
 
         Returns:
             The goal cost. We want the smallest Euclidean distance. 
-            The smaller distance , the lower cost.
+            The smaller distance, the lower cost.
             
             Example:
             0.3
@@ -217,14 +218,14 @@ class DWAPlanner:
         """Compute the velocity cost of the sampled linear velocity.
 
         Given a sampled linear velocity, this funciton computes the velocty cost based on it.
-        The smaller velocity , the higher cost.
+        The smaller velocity, the higher cost.
 
         Args:
             v: the sampled linear velocity
 
         Returns:
             The velocity cost. We want the fastest speed.
-            The smaller velocity , the higher cost.
+            The smaller velocity, the higher cost.
             
             Example:
             0.3
@@ -298,11 +299,11 @@ class DifferentialOdometry:
             dtheta = w**dt
             ddistance = np.sqrt((dx)**2+(dy)**2)
             
+            # Update odometry states
             self._x += dx
             self._y += dy
             self._theta += dtheta
             self._travelled_distance += ddistance
-            
             self._time = t
     
     
@@ -353,8 +354,45 @@ class DifferentialOdometry:
     
     
 class WaypointNode(Node):
+    """Waypoint ROS 2 Node
 
+    The waypoint node is derived from the Node class in rclpy.node
+    This node communicates through several ROS 2 protocols:
+
+    PUBLISHERS:
+    + turtle1/cmd_vel (geometry_msgs.msg.Twist) - The velocity command to control the turtle
+    + loop_metrics (turtle_interfaces.msg.ErrorMetric) - Indicating the turtle's trajectory information.
+
+    SUBSCRIBERS:
+    + turtle1/pose (turtlesim.msg.Pose) - The pose state of the turtle
+
+    SERVICES:
+    + toggle (std_srvs.srv.Empty) - To toggle the turtle's state (STOPPED/MOVING)
+    + load (turtle_interfaces.srv.Waypoints) - To load waypoints for the turtle to follow
+
+    CLIENTS:
+    + reset (std_srvs.srv.Empty) - To reset the turtlesim simulator
+    + turtle1/teleport_absolute (turtlesim.srv.TeleportAbsolute) - To teleport the turtle to specific 
+        positions
+    + turtle1/set_pen (turtlesim.srv.SetPen) - To control the pen in turtlesim
+    
+    PARAMETERS:
+    + frequency (double) - Timer frequency to control the turtle's movements
+    + tolerance (double) - The tolerance to check whether the turtle has arrived at the waypoint
+    
+    Parameters below are related to other features I added for fun.
+    + robot_name (string) - The robot name (default to "turtle1" in this project). I do this because
+        I think in the future this project can be expanded to a multi-robot system.
+    + rainbow_frequency (double) - Timer frequency to control the pen color in turtlesim. I do this 
+        because I heard another guy from the last cohort did this, and I think it's interesting.
+    + rainbow_increment_speed (double) - The speed of the rainbow
+    """
     def __init__(self):
+        """Initialize waypoint node
+        
+        Args:
+            None
+        """
         super().__init__('waypoint_node')
         # Set logger level to DEBUG
         # self.get_logger().set_level(rclpy.logging.LoggingSeverity.DEBUG)
@@ -449,6 +487,21 @@ class WaypointNode(Node):
         
         
     def _timer_callback(self):
+        """Callback function for the main timer
+
+        This loop controls the turtle's movements according to the node state.
+        If the state is STOPPED, it stops the turtle.
+        If the state is MOVING, it makes the turtle follow loaded waypoints.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            len(self._waypoints) == 0: No waypoints loaded. Load them with the "load" service.
+        """
         if(self._state == MOVING):
             self.get_logger().debug('Issuing Command!')
             # Make sure waypoints are loaded
@@ -512,6 +565,19 @@ class WaypointNode(Node):
     
 
     async def _rainbow_timer_callback(self):
+        """Callback function for drawing a rainbow using the pen in turtlesim
+
+        This loop controls the pen color in turtlesim. It keeps calling the turtle1/set_pen service
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            turtle1/set_pen service not loaded
+        """
         if(self._state == MOVING):
             seed = float(self._rainbow_seed)/float(256*3)
             r = int(127*np.sin((2*np.pi)*seed) + 128) # 0 - 255
@@ -531,6 +597,22 @@ class WaypointNode(Node):
         
         
     async def _draw_an_X(self, x, y):
+        """Teleport the turtle to draw an X
+
+        This function will call turtle1/teleport_absolute service for several times 
+        to draw an X.
+
+        Args:
+            x: The center position x of the X
+            y: The center position y of the X
+
+        Returns:
+            None
+
+        Raises:
+            turtle1/set_pen service not loaded
+            turtle1/teleport_absolute service not loaded
+        """
         # Set parameters for drawing the X
         X_length = 0.15
         self._set_pen_request.r = int(255)
@@ -583,7 +665,28 @@ class WaypointNode(Node):
         # self.get_logger().info(str(self._teleport_absolute_request))
     
     
-    async def _load_callback(self, request, response):        
+    async def _load_callback(self, request, response):
+        """Callback function for the /load service
+
+        This function load requested waypoints, drawing Xs at each point,
+        and then store the waypoints into class variables for the turtle to follow.
+
+        Args:
+            request: The Waypoints to be loaded
+            response: Response variable to be returned
+
+        Returns:
+            response: Straight-line distance of the path formed by the waypoints
+            Example:
+            
+            response.distance = 27.31
+            
+            Returned value.distance is float64
+
+        Raises:
+            turtle1/set_pen service not loaded
+            turtle1/teleport_absolute service not loaded
+        """  
         # Reset error metrics
         self._loop_metrics.complete_loops = int(0)
         self._loop_metrics.actual_distance = float(0)
@@ -630,6 +733,22 @@ class WaypointNode(Node):
     
     
     def _toggle_callback(self, request, response):
+        """Callback function for the /toggle service
+
+        This function will switch the ndoe state between STOPPED and MOVING.
+
+        Args:
+            request: The std_srvs.srv.Empty request
+            response: Response variable to be returned
+
+        Returns:
+            response: The std_srvs.srv.Empty response
+            
+            Returned value is empty
+
+        Raises:
+            None
+        """  
         if(self._state == STOPPED):
             self._state = MOVING
         elif(self._state == MOVING):
@@ -643,10 +762,37 @@ class WaypointNode(Node):
     
     
     def _turtle_pose_callback(self, msg):
+        """Callback function for the turtle1/pose topic
+
+        This function will listen to turtle1/pose topic and store the data into self._turtle_pose
+
+        Args:
+            msg: The message in turtle1/pose topic
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """  
         self._turtle_pose = msg
     
     
     def _parameter_callback(self, params):
+        """Callback function dynamic reconfiguration
+
+        This function is an unused feature developed by me. I originally intended to add a feature 
+        to enable setting ROS 2 parameters dynamically. But later I found it's unnecessary in this homework.
+
+        Args:
+            params: The ROS 2 parameters to be updated
+
+        Returns:
+            rcl_interfaces.msg.SetParametersResult
+
+        Raises:
+            None
+        """  
         for param in params:
             self.get_logger().info('PARAMETER NEW VALUE, '+str(param.name)+': '+str(param.value))
         
@@ -654,6 +800,19 @@ class WaypointNode(Node):
 
 
 def main(args=None):
+    """Main funciton to start the waypoint node
+
+    This function is the main funciton of this Python script
+
+    Args:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """  
     rclpy.init(args=args)
     waypoint_node = WaypointNode()
     rclpy.spin(waypoint_node)
@@ -662,4 +821,17 @@ def main(args=None):
 
 
 if __name__ == '__main__':
+    """Main funciton of this Python script
+
+    This function is the main funciton of this Python script
+
+    Args:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """ 
     main()

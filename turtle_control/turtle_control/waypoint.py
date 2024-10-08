@@ -1,15 +1,30 @@
 """The waypoint ROS 2 node for hopmework-1, along with a DWA planner class and an odometry class.
 
-This script contains the waypoint node. It communicates through several services and topics:
+The waypoint node communicates through several ROS 2 protocols:
 
 PUBLISHERS:
-  + ${topic_name} (${message_type}) - The velocity of an erratic turtle path
+  + turtle1/cmd_vel (geometry_msgs.msg.Twist) - The velocity command to control the turtle
+  + loop_metrics (turtle_interfaces.msg.ErrorMetric) - Indicating the turtle's trajectory information.
+
+SUBSCRIBERS:
+  + turtle1/pose (turtlesim.msg.Pose) - The pose state of the turtle
 
 SERVICES:
-  + ${topic_name} (${service_type}) - Position of the new turtle
+  + toggle (std_srvs.srv.Empty) - To toggle the turtle's state (STOPPED/MOVING)
+  + load (turtle_interfaces.srv.Waypoints) - To load waypoints for the turtle to follow
 
+CLIENTS:
+  + reset (std_srvs.srv.Empty) - To reset the turtlesim simulator
+  + turtle1/teleport_absolute (turtlesim.srv.TeleportAbsolute) - To teleport the turtle to specific positions
+  + turtle1/set_pen (turtlesim.srv.SetPen) - To control the pen in turtlesim
+  
 PARAMETERS:
   + frequency (double) - Timer frequency to control the turtle's movements
+  + tolerance (double) - The tolerance to check whether the turtle has arrived at the waypoint
+  + robot_name (string) - The robot name (default to "turtle1" in this project)
+  + rainbow_frequency (double) - Timer frequency to control the pen color in turtlesim
+  + rainbow_increment_speed (double) - The speed of the rainbow
+  
 """
 
 import rclpy

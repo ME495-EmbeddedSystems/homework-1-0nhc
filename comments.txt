@@ -1,0 +1,4 @@
+inspection.md: A
+package.xml license not updated nor is it updated in setup.py
+Rainbow Powered!
+Good use of separate classes for the planning algorithm

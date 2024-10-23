@@ -100,7 +100,7 @@ If the nodes launched from the `launchfile` are not running, you will get incorr
        Constraints:
     ```
 
-12. Use the ROS command `ros2 interface show crazy_turtle_interfaces/srv/Switch` to retrieve a template/prototype for entering parameters for the `/switch` service on the command line.
+12. Use the ROS command `ros2 interface [proto] show crazy_turtle_interfaces/srv/Switch` to retrieve a template/prototype for entering parameters for the `/switch` service on the command line.
     ```
     turtlesim/Pose mixer # use a strange formula to set the new location of the turtle
        float32 x
@@ -126,7 +126,7 @@ If the nodes launched from the `launchfile` are not running, you will get incorr
    ```
 
 ## Live Interaction
-1. Use the command `ros2 param get /mover velocity` to retrieve the value of the `/mover velocity` parameter, which is `4.5`.
+1. Use the command `ros2 param get /mover velocity` to retrieve the value of the `/mover velocity` parameter, which is `[Double Value is:] 4.5`.
 2. The ROS command to call the `/switch` service, and it's output is listed below:
     ```
     ros2 service call /switch crazy_turtle_interfaces/srv/Switch "{mixer: {x: 1.0, y: 2.0, theta: 0.0, angular_velocity: 3.0, linear_velocity: 4.0}}"
@@ -136,7 +136,7 @@ If the nodes launched from the `launchfile` are not running, you will get incorr
     ```
 3. The `switch` service performs the following actions (in sequence):
     1. It `kills` the current turtle
-    2. It then respawns a new turtle at `[x=request.y+angular_velocity, y=request.x*linear_velocity, theta=uniform(-pi, pi)]`, here is `[x=5.0, y=4.0, theta=uniform(-pi, pi)]`
+    2. It then respawns a new turtle at `[x=request.y+angular_velocity, y=request.x*linear_velocity`
 4. What happens to the turtle's motion if you use `ros2 param set /mover velocity 10.0` to change `/mover velocity` to 10? `same`
 5. Use the Linux command `pkill mover` to kill the `/mover` node.
 6. Use the ROS command `ros2 run crazy_turtle mover --ros-args -p velocity:=10.0 --remap /cmd_vel:=turtle1/cmd_vel` to start the `/mover` node with a velocity of 10. 
